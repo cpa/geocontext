@@ -1,6 +1,6 @@
 # MCP Tool Reference
 
-Generated from runtime `toolDefinition` metadata for `@ignfab/geocontext` v0.9.7.
+Generated from runtime `toolDefinition` metadata for `@ignfab/geocontext` v0.9.8.
 
 ## Contrat d’erreur MCP
 
@@ -54,6 +54,7 @@ Exemple complet généré automatiquement à partir d'un appel de tool invalide 
 - [`gpf_wfs_get_feature_by_id`](#gpf_wfs_get_feature_by_id)
 - [`gpf_wfs_get_features`](#gpf_wfs_get_features)
 - [`gpf_wfs_search_types`](#gpf_wfs_search_types)
+- [`itineraire`](#itineraire)
 - [`urbanisme`](#urbanisme)
 
 ## `adminexpress`
@@ -1172,6 +1173,221 @@ Title: Recherche de types WFS
 ```
 
 </details>
+
+## `itineraire`
+
+Source: [src/tools/ItineraireTool.ts](../src/tools/ItineraireTool.ts)
+
+Title: Calcul d’itinéraire
+
+### Description du tool
+
+- Calcule un itinéraire entre deux points `lon/lat` via le service de navigation de la Géoplateforme.
+- La ressource GeoPlateforme est fixée à `bdtopo-osrm`, recommandée par la documentation GeoPF pour les calculs d'itinéraire courants.
+- `profile` accepte `car` ou `pedestrian` ; le profil `exceptionnal` exposé par les capacités OSRM n'est pas publié par ce tool.
+- Règle d'appel : si l'utilisateur n'a pas précisé le mode de déplacement, estimer la distance directe totale entre les points ; appeler avec `pedestrian` sous 2 km, appeler avec `car` au-dessus de 5 km, et demander le mode à l'utilisateur entre 2 km et 5 km avant d'appeler le tool.
+- `optimization` accepte `fastest` ou `shortest`.
+- Les contraintes exposées sont celles de `bdtopo-osrm` : exclusion (`banned`) d'un `waytype` égal à `autoroute`, `pont` ou `tunnel`.
+- `result_type="request"` renvoie une requête compacte (`get_url`) cohérente avec les tools WFS en mode request.
+- `result_type="results"` renvoie une FeatureCollection GeoJSON normalisée avec une seule feature : la géométrie calculée est placée dans `geometry` et les métadonnées du service dans `properties`.
+- Le guidage pas-à-pas est demandé au service (`getSteps=true`, `waysAttributes=name`) et normalisé dans `properties.turnByTurn` quand GeoPlateforme renvoie des étapes.
+- Les coordonnées d'entrée sont toujours exprimées en WGS84 (`lon/lat`) ; le service est appelé avec `crs=EPSG:4326` et `geometryFormat=geojson`.
+- Aucun `feature_ref` n'est renvoyé : un itinéraire est une géométrie calculée à la demande, pas un objet WFS persistant.
+- (source : Géoplateforme (navigation, itinéraire)).
+
+### Input Schema
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `constraints` | array | no | Contraintes GeoPlateforme optionnelles appliquées au calcul. Elles permettent d'exclure certains types de tronçons routiers. Default: []. |
+| `distance_unit` | string | no | Unité utilisée pour les distances renvoyées. Values: meter, kilometer. Default: meter. |
+| `end_lat` | number | yes | Latitude du point d'arrivée. |
+| `end_lon` | number | yes | Longitude du point d'arrivée. |
+| `get_bbox` | boolean | no | Indique si l'emprise de l'itinéraire doit être demandée au service. Default: true. |
+| `get_steps` | boolean | no | Indique si les étapes détaillées de l'itinéraire doivent être demandées au service. Default: true. |
+| `intermediates` | array | no | Points intermédiaires ordonnés à emprunter par l'itinéraire, exprimés en WGS84 `lon/lat`. Default: []. |
+| `optimization` | string | no | Mode de calcul utilisé pour déterminer l'itinéraire : `fastest` ou `shortest`. Values: fastest, shortest. Default: fastest. |
+| `profile` | string | yes | Mode de déplacement utilisé pour le calcul. `bdtopo-osrm` expose `car` et `pedestrian` pour ce tool. Ce champ est obligatoire : si l'utilisateur n'a pas donné de mode, estimer la distance directe totale entre les points ; utiliser `pedestrian` si elle est inférieure à 2 km, `car` si elle est supérieure à 5 km, et demander à l'utilisateur de choisir avant d'appeler le tool entre 2 km et 5 km. Values: car, pedestrian. |
+| `result_type` | string | no | `results` renvoie une FeatureCollection GeoJSON normalisée contenant l'itinéraire calculé. `request` renvoie la requête GeoPlateforme compilée (`get_url`) pour visualisation ou débogage. Values: results, request. Default: results. |
+| `start_lat` | number | yes | Latitude du point de départ. |
+| `start_lon` | number | yes | Longitude du point de départ. |
+| `time_unit` | string | no | Unité utilisée pour les durées renvoyées. Values: hour, minute, second, standard. Default: second. |
+
+<details>
+<summary>Raw input schema</summary>
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "start_lon": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180,
+      "description": "Longitude du point de départ."
+    },
+    "start_lat": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90,
+      "description": "Latitude du point de départ."
+    },
+    "end_lon": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180,
+      "description": "Longitude du point d'arrivée."
+    },
+    "end_lat": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90,
+      "description": "Latitude du point d'arrivée."
+    },
+    "intermediates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lon": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "description": "La longitude du point."
+          },
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "description": "La latitude du point."
+          }
+        },
+        "required": [
+          "lon",
+          "lat"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 15,
+      "default": [],
+      "description": "Points intermédiaires ordonnés à emprunter par l'itinéraire, exprimés en WGS84 `lon/lat`."
+    },
+    "profile": {
+      "type": "string",
+      "enum": [
+        "car",
+        "pedestrian"
+      ],
+      "description": "Mode de déplacement utilisé pour le calcul. `bdtopo-osrm` expose `car` et `pedestrian` pour ce tool. Ce champ est obligatoire : si l'utilisateur n'a pas donné de mode, estimer la distance directe totale entre les points ; utiliser `pedestrian` si elle est inférieure à 2 km, `car` si elle est supérieure à 5 km, et demander à l'utilisateur de choisir avant d'appeler le tool entre 2 km et 5 km."
+    },
+    "optimization": {
+      "type": "string",
+      "enum": [
+        "fastest",
+        "shortest"
+      ],
+      "default": "fastest",
+      "description": "Mode de calcul utilisé pour déterminer l'itinéraire : `fastest` ou `shortest`."
+    },
+    "get_steps": {
+      "type": "boolean",
+      "default": true,
+      "description": "Indique si les étapes détaillées de l'itinéraire doivent être demandées au service."
+    },
+    "get_bbox": {
+      "type": "boolean",
+      "default": true,
+      "description": "Indique si l'emprise de l'itinéraire doit être demandée au service."
+    },
+    "distance_unit": {
+      "type": "string",
+      "enum": [
+        "meter",
+        "kilometer"
+      ],
+      "default": "meter",
+      "description": "Unité utilisée pour les distances renvoyées."
+    },
+    "time_unit": {
+      "type": "string",
+      "enum": [
+        "hour",
+        "minute",
+        "second",
+        "standard"
+      ],
+      "default": "second",
+      "description": "Unité utilisée pour les durées renvoyées."
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "constraint_type": {
+            "type": "string",
+            "const": "banned",
+            "default": "banned",
+            "description": "Type de contrainte GeoPlateforme OSRM. `banned` exclut du calcul les tronçons du graphe routier qui correspondent à la condition."
+          },
+          "key": {
+            "type": "string",
+            "const": "waytype",
+            "default": "waytype",
+            "description": "Critère de contrainte GeoPlateforme OSRM. Seul `waytype` est exposé par `bdtopo-osrm`."
+          },
+          "operator": {
+            "type": "string",
+            "const": "=",
+            "default": "=",
+            "description": "Opérateur de contrainte GeoPlateforme OSRM. Seul `=` est exposé par `bdtopo-osrm`."
+          },
+          "value": {
+            "type": "string",
+            "enum": [
+              "autoroute",
+              "pont",
+              "tunnel"
+            ],
+            "description": "Type de tronçon à exclure du calcul OSRM."
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 3,
+      "default": [],
+      "description": "Contraintes GeoPlateforme optionnelles appliquées au calcul. Elles permettent d'exclure certains types de tronçons routiers."
+    },
+    "result_type": {
+      "type": "string",
+      "enum": [
+        "results",
+        "request"
+      ],
+      "default": "results",
+      "description": "`results` renvoie une FeatureCollection GeoJSON normalisée contenant l'itinéraire calculé. `request` renvoie la requête GeoPlateforme compilée (`get_url`) pour visualisation ou débogage."
+    }
+  },
+  "required": [
+    "start_lon",
+    "start_lat",
+    "end_lon",
+    "end_lat",
+    "profile"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+</details>
+
+### Output
+
+No single `outputSchema` is exposed. Output depends on `result_type` (`results`, `request`).
 
 ## `urbanisme`
 

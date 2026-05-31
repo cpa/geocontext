@@ -9,6 +9,7 @@ import GpfWfsDescribeTypeTool from "../../src/tools/GpfWfsDescribeTypeTool";
 import GpfWfsGetFeatureByIdTool from "../../src/tools/GpfWfsGetFeatureByIdTool";
 import GpfWfsGetFeaturesTool from "../../src/tools/GpfWfsGetFeaturesTool";
 import GpfWfsSearchTypesTool from "../../src/tools/GpfWfsSearchTypesTool";
+import ItineraireTool from "../../src/tools/ItineraireTool";
 import UrbanismeTool from "../../src/tools/UrbanismeTool";
 
 const strictInputCases = [
@@ -59,6 +60,17 @@ const strictInputCases = [
     label: "GpfWfsSearchTypesTool",
     tool: new GpfWfsSearchTypesTool(),
     validArguments: { query: "batiment" },
+  },
+  {
+    label: "ItineraireTool",
+    tool: new ItineraireTool(),
+    validArguments: {
+      start_lon: 2.333333,
+      start_lat: 48.866667,
+      end_lon: 2.367776,
+      end_lat: 48.852891,
+      profile: "car",
+    },
   },
   {
     label: "UrbanismeTool",
